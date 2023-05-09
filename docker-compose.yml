@@ -1,12 +1,37 @@
 version: '3.8'
 services:
+  elasticsearch:
+    image: 'elasticsearch:7.11.1'
+    container_name: elasticsearch
+    restart: unless-stopped
+    ports:
+      - '0.0.0.0:9200:9200'
+    environment:
+      - http.host=0.0.0.0
+      - discovery.type=single-node
+      - cluster.name=hive
+      - script.allowed_types= inline
+      - thread_pool.search.queue_size=100000
+      - thread_pool.write.queue_size=10000
+      - gateway.recover_after_nodes=1
+      - xpack.security.enabled=false
+      - bootstrap.memory_lock=true
+      - ES_JAVA_OPTS=-Xms256m -Xmx256m
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - './vol/elasticsearch/data:/usr/share/elasticsearch/data'
+      - './vol/elasticsearch/logs:/usr/share/elasticsearch/logs'
   portainer:
     image: portainer/portainer-ce:latest
+    container_name: portainer
     ports:
       - 9443:9443
-      volumes:
-        - data:/data
-        - /var/run/docker.sock:/var/run/docker.sock
+    volumes:
+      - data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
   cortex:
     image: 'thehiveproject/cortex:latest'
@@ -62,26 +87,25 @@ services:
       - default
     command: n8n start
   thehive:
-    image: strangebee/thehive:5.0.23
-    container_name: 'thehive5'
+    image: 'thehiveproject/thehive4:latest'
+    container_name: 'thehive4'
     ports:
-      - "9000:9000"
-    environment:
-      - MAX_HEAP_SIZE=1G
-      - HEAP_NEWSIZE=1G
+      - '0.0.0.0:9000:9000'
     volumes:
-      - ./vol/thehive/etc:/etc/thehive
-      - ./vol/thehive/db:/opt/thp/thehive/db
-      - ./vol/thehive/index:/opt/thp/thehive/index
-      - ./vol/thehive/data:/opt/thp/thehive/data
-      - ./vol/thehive/logs:/var/log/thehive
+      - './vol/thehive/application.conf:/etc/thehive/application.conf'
+      - './vol/thehive/db:/opt/thp/thehive/db'
+      - './vol/thehive/data:/opt/thp/thehive/data'
+      - './vol/thehive/index:/opt/thp/thehive/index'
     networks:
       - default
+    command: '--no-config --no-config-secret'
   redis:
-    image: redis:5.0.6
-
+    image: redis:latest
+    container_name: redis
+    restart: unless-stopped
   db:
-    image: mysql:8.0.19
+    image: mysql:latest
+    container_name: db
     command: --default-authentication-plugin=mysql_native_password
     restart: always
     environment:
@@ -96,38 +120,24 @@ services:
 
   misp:
     image: coolacid/misp-docker:core-latest
+    container_name: misp
+    restart: unless-stopped
     depends_on:
       - redis
       - db
     ports:
       - "80:80"
       - "443:443"
-    volumes:
-      - "./server-configs/:/var/www/MISP/app/Config/"
-      - "./logs/:/var/www/MISP/app/tmp/logs/"
-      - "./files/:/var/www/MISP/app/files"
-      - "./ssl/:/etc/nginx/certs"
-#      - "./examples/custom-entrypoint.sh:/custom-entrypoint.sh" # Use the example custom-entrypoint.sh
     environment:
       - "HOSTNAME=https://40.121.138.199"
       - "REDIS_FQDN=redis"
       - "INIT=true"             # Initialze MISP, things includes, attempting to import SQL and the Files DIR
       - "CRON_USER_ID=1"        # The MISP user ID to run cron jobs as
-#      - "SYNCSERVERS=1 2 3 4"  # The MISP Feed servers to sync in the cron job
-      # Database Configuration (And their defaults)
-#      - "MYSQL_HOST=db"
-#      - "MYSQL_USER=misp"
-#      - "MYSQL_PASSWORD=example" # NOTE: This should be AlphaNum with no Special Chars. Otherwise, edit config files after first run. 
-#      - "MYSQL_DATABASE=misp"
-      # Optional Settings
-#      - "NOREDIR=true" # Do not redirect port 80
-#      - "DISIPV6=true" # Disable IPV6 in nginx
-#      - "CERTAUTH=optional" # Can be set to optional or on - Step 2 of https://github.com/MISP/MISP/tree/2.4/app/Plugin/CertAuth is still required
-#      - "SECURESSL=true" # Enable higher security SSL in nginx
-#      - "MISP_MODULES_FQDN=http://misp-modules" # Set the MISP Modules FQDN, used for Enrichment_services_url/Import_services_url/Export_services_url
-#      - "WORKERS=1" #If set to a value larger than 1 this will increase the number of parallel worker processes
+      - "DISIPV6=true" # Disable IPV6 in nginx
+
   misp-modules:
     image: coolacid/misp-docker:modules-latest
+    container_name: misp-modules
     environment:
       - "REDIS_BACKEND=redis"
     depends_on:
@@ -135,6 +145,7 @@ services:
       - db
   wazuh.manager:
     image: wazuh/wazuh-manager:4.4.0
+    container_name: wazuh_manager
     hostname: wazuh.manager
     restart: always
     ports:
@@ -143,7 +154,7 @@ services:
       - "514:514/udp"
       - "55000:55000"
     environment:
-      - INDEXER_URL=https://wazuh.indexer:9201
+      - INDEXER_URL=https://wazuh.indexer:9200
       - INDEXER_USERNAME=admin
       - INDEXER_PASSWORD=SecretPassword
       - FILEBEAT_SSL_VERIFICATION_MODE=full
@@ -171,10 +182,11 @@ services:
 
   wazuh.indexer:
     image: wazuh/wazuh-indexer:4.4.0
+    container_name: wazuh_indexer
     hostname: wazuh.indexer
     restart: always
     ports:
-      - "9201:9201"
+      - "9201:9200"
     environment:
       - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
     ulimits:
@@ -196,6 +208,7 @@ services:
 
   wazuh.dashboard:
     image: wazuh/wazuh-dashboard:4.4.0
+    container_name: wazuh_dashboard
     hostname: wazuh.dashboard
     restart: always
     ports:
@@ -204,6 +217,8 @@ services:
       - INDEXER_USERNAME=admin
       - INDEXER_PASSWORD=SecretPassword
       - WAZUH_API_URL=https://wazuh.manager
+      - DASHBOARD_USERNAME=kibanaserver
+      - DASHBOARD_PASSWORD=kibanaserver
       - API_USERNAME=wazuh-wui
       - API_PASSWORD=MyS3cr37P450r.*-
     volumes:
