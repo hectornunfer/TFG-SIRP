@@ -19,5 +19,5 @@ Tras iniciar la plataforma, se tiene acceso a las diferentes aplicaciones en las
 | Cortex |    http://x.x.x.x:9001  |    |
 | Portainer | https://x.x.x.x:9443/ |     |
 | N8n |  http://x.x.x.x:5678 |  thehive  |  thehive
-| MISP |    https://x.x.x.x:443   admin@admin.test | admin
+| MISP |    https://x.x.x.x:443  | admin@admin.test | admin
 | Wazuh | http://x.x.x.x:444 |  kibanaserver | kibanaserver
